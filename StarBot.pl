@@ -1,6 +1,7 @@
 #!/usr/bin/perl -w
 
 use strict;
+use File::Tail;
 
 package StarBot;
 use base 'Bot::BasicBot';
@@ -20,12 +21,17 @@ StarBot->new(
   nick => $nick,
   alt_nicks => ["${nick}1"],
   username => $nick,
-  name => "Who am I?",
+  name => "The sentient StarBound bot.",
 )->run;
  
 sub connected {
   my $self = shift;
   print "** Connected to $server:$port!\n";
+  $SIG{'INT'} = sub {
+    my $body = "Control-c detected. Goodbye cruel world!";
+    $self->log($body);
+    $self->shutdown($body); 
+  };
 }
 
 sub said {
@@ -37,6 +43,9 @@ sub said {
   if ($body =~ /^\..*?$/) {
     return  "${user}: I'm sorry I don't understand any commands at the moment.";
   }
+  if ($body =~ /$nick/i) {
+    return  "${user}: What now?";
+  }
 }
 
 
@@ -44,6 +53,9 @@ sub chanjoin {
   my ($self,$message) = @_;
   my $user = $message->{who};
   my $chan = $message->{channel};
+  if ($chan ne $channel) {
+    return;
+  }
   
   $self->log("** User $user has joined $chan");
   if ($user =~ /$nick/i) {
@@ -55,14 +67,20 @@ sub chanjoin {
     if (!exists $seen{$user}) {
       $seen{$user} = time;
       $self->say(channel => $chan, body => "Welcome $user! Chat is currently game to IRC only at the moment.");
+    } else {
+      $self->say(channel => $chan, body => "Welcome back $user!");
     }
   }
 }
 
 sub watch_log {
-  my $self = shift;
-  open (TAIL, "tail -f -n0 $log_file|");
-  while (my $line = <TAIL>) {
+  print "Tailing $log_file\n";
+  my $tail = File::Tail->new(
+    name => $log_file,
+    interval => 1,
+    debug => 1,
+  );
+  while(my $line = $tail->read()) {
     chomp($line);
     my $body = "";
     if ($line =~ /^Info:  <(\w+)> (.*?)$/) {
@@ -78,7 +96,6 @@ sub watch_log {
       print "$body\n";
     }
   }
-  close TAIL;
+  print "No longer tailing $log_file\n";
 }
 
-$SIG{'INT'} = sub { StarBot->shutdown };
